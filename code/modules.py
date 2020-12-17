@@ -8,9 +8,14 @@ from sklearn.svm import SVC
 from sklearn.neural_network import MLPClassifier
 from scipy.spatial.distance import pdist, cdist, squareform
 
+import matplotlib.pyplot as plt
+
 # Custom imports
 from reservoir import Reservoir
 from tensorPCA import tensorPCA
+
+#my imports
+from visualize import write_data_to_file, plot_AB
 
 
 def compute_test_scores(pred_class, Yte):
