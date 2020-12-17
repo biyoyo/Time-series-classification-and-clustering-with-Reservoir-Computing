@@ -32,33 +32,37 @@ def compute_test_scores(pred_class, Yte):
 class RC_model(object):
     
     def __init__(self,
-              # reservoir
-              reservoir=None,     
-              n_internal_units=None,
-              spectral_radius=None,
-              leak=None,
-              connectivity=None,
-              input_scaling=None,
-              noise_level=None,
-              n_drop=None,
-              bidir=False,
-              circle=False,
-              # dim red
-              dimred_method=None, 
-              n_dim=None,
-              # representation
-              mts_rep=None,
-              w_ridge_embedding=None,
-              # readout
-              readout_type=None,               
-              w_ridge=None,              
-              mlp_layout=None,
-              num_epochs=None,
-              w_l2=None,
-              nonlinearity=None, 
-              svm_gamma=1.0,
-              svm_C=1.0,
-              ):
+                 # reservoir
+                 reservoir=None,
+                 n_internal_units=None,
+                 spectral_radius=None,
+                 leak=None,
+                 connectivity=None,
+                 input_scaling=None,
+                 noise_level=None,
+                 n_drop=None,
+                 bidir=False,
+                 circle=False,
+                 #IP
+                 IP=False,
+                 ab=None,
+                 ip_parameters=None,
+                 # dim red
+                 dimred_method=None,
+                 n_dim=None,
+                 # representation
+                 mts_rep=None,
+                 w_ridge_embedding=None,
+                 # readout
+                 readout_type=None,
+                 w_ridge=None,
+                 mlp_layout=None,
+                 num_epochs=None,
+                 w_l2=None,
+                 nonlinearity=None,
+                 svm_gamma=1.0,
+                 svm_C=1.0,
+                 ):
         """
         Build and evaluate a RC-based classifier.
         The training and test MTS are multidimensional arrays of shape [N,T,V], with
@@ -107,22 +111,25 @@ class RC_model(object):
             svm_gamma = bandwith of the RBF kernel (only for readout_type=='svm')
             svm_C = regularization for SVM hyperplane (only for readout_type=='svm')
         """
-        self.n_drop=n_drop
-        self.bidir=bidir
-        self.dimred_method=dimred_method
-        self.mts_rep=mts_rep
-        self.readout_type=readout_type
-        self.svm_gamma=svm_gamma
-                        
+        self.n_drop = n_drop
+        self.bidir = bidir
+        self.dimred_method = dimred_method
+        self.mts_rep = mts_rep
+        self.readout_type = readout_type
+        self.svm_gamma = svm_gamma
+        self.ip_parameters = ip_parameters
+
         # Initialize reservoir
         if reservoir is None:
             self._reservoir = Reservoir(n_internal_units=n_internal_units,
-                                  spectral_radius=spectral_radius,
-                                  leak=leak,
-                                  connectivity=connectivity,
-                                  input_scaling=input_scaling,
-                                  noise_level=noise_level,
-                                  circle=circle)
+                                        spectral_radius=spectral_radius,
+                                        leak=leak,
+                                        connectivity=connectivity,
+                                        input_scaling=input_scaling,
+                                        noise_level=noise_level,
+                                        circle=circle,
+                                        IP=IP,
+                                        ab=ab)
         else:
             self._reservoir = reservoir
                 
@@ -152,13 +159,15 @@ class RC_model(object):
                     hidden_layer_sizes=mlp_layout, 
                     activation=nonlinearity, 
                     alpha=w_l2,
-                    batch_size=32, 
-                    learning_rate='adaptive', # 'constant' or 'adaptive'
-                    learning_rate_init=0.001, 
-                    max_iter=num_epochs, 
-                    early_stopping=False, # if True, set validation_fraction > 0
-                    validation_fraction=0.0 # used for early stopping
-                    )
+                    batch_size=32,
+                    learning_rate='adaptive',  # 'constant' or 'adaptive'
+                    learning_rate_init=0.001,
+                    max_iter=num_epochs,
+                    early_stopping=False,  # if True, set validation_fraction > 0
+                    validation_fraction=0.0  # used for early stopping
+                )
+            elif self.readout_type == 'identity':
+                self.readout = Ridge(alpha=w_ridge)
             else:
                 raise RuntimeError('Invalid readout type')  
         
@@ -233,7 +242,10 @@ class RC_model(object):
             
         elif self.readout_type == 'mlp': # MLP (deep readout)
             self.readout.fit(input_repr, Y)
-                        
+
+        elif self.readout_type == 'identity': #new readout
+            self.readout.fit(input_repr, Y)
+
         tot_time = (time.time()-time_start)/60
         return tot_time
 
@@ -304,6 +316,10 @@ class RC_model(object):
         elif self.readout_type == 'mlp': # MLP (deep readout)
             pred_class = self.readout.predict(input_repr_te)
             pred_class = np.argmax(pred_class, axis=1)
-            
+
+        elif self.readout_type == 'identity':  # new readout
+            logits = self.readout.predict(input_repr_te)
+            pred_class = np.argmax(logits, axis=1)
+
         accuracy, f1 = compute_test_scores(pred_class, Yte)
         return accuracy, f1
