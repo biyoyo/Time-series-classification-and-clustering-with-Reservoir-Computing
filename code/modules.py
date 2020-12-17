@@ -249,7 +249,28 @@ class RC_model(object):
         tot_time = (time.time()-time_start)/60
         return tot_time
 
-            
+    def trainIP(self, X, iterations):
+        time_start = time.time()
+
+        N, _, _ = X.shape
+
+        (eta, mu, sigma) = self.ip_parameters
+
+        for _ in range(iterations):
+            for i in range(N):
+                y, x = self._reservoir.get_states(X[np.newaxis, i, :, :], n_drop=self.n_drop, bidir=self.bidir)
+                deltaB = -eta*(-mu/(sigma ** 2) + (1/(sigma ** 2))*y[0, 0, :]*(2*sigma ** 2 + 1 - y[0, 0, :]*(y[0, 0, :]) + mu*y[0, 0, :]))
+                deltaA = eta*(np.power(self._reservoir.A, (-1))).T + np.multiply(deltaB, np.squeeze(x))
+
+                self._reservoir.A += deltaA.T
+                self._reservoir.B += deltaB[:, np.newaxis]
+
+            write_data_to_file(self._reservoir.A, "a_data.txt")
+            write_data_to_file(self._reservoir.B, "b_data.txt")
+
+        tot_time = (time.time()-time_start)
+        print("Ip tuning finished in ", round(tot_time, 3), " seconds.")
+
     def test(self, Xte, Yte):
 
         # ============ Compute reservoir states ============
