@@ -13,10 +13,14 @@ class Reservoir(object):
         input_scaling = scaling of the input connection weights
         noise_level = deviation of the Gaussian noise injected in the state update
         circle = generate determinisitc reservoir with circle topology
+
+        IP = use intrinsic plasticity when this is true
+        (ab) = tuple of intrinsic plasticity parameters
     """
     
     def __init__(self, n_internal_units=100, spectral_radius=0.99, leak=None,
-                 connectivity=0.3, input_scaling=0.2, noise_level=0.01, circle=False):
+                 connectivity=0.3, input_scaling=0.2, noise_level=0.01, circle=False,
+                 IP = False, ab=(1.0, 0.0)):
         
         # Initialize attributes
         self._n_internal_units = n_internal_units
@@ -24,8 +28,14 @@ class Reservoir(object):
         self._noise_level = noise_level
         self._leak = leak
 
+        self._IP = IP
+        self._ab = ab
+        self.A = None
+        self.B = None
+
         # Input weights depend on input size: they are set when data is provided
         self._input_weights = None
+
 
         # Generate internal weights
         if circle:
@@ -73,19 +83,28 @@ class Reservoir(object):
 
         return internal_weights
 
-
     def _compute_state_matrix(self, X, n_drop=0):
         N, T, _ = X.shape
+
         previous_state = np.zeros((N, self._n_internal_units), dtype=float)
 
         # Storage
         state_matrix = np.empty((N, T - n_drop, self._n_internal_units), dtype=float)
 
+        #initialize ip parameters
+        if self._IP is True and self.A is None and self.B is None:
+            self.A = np.full((self._n_internal_units, N), self._ab[0])
+            self.B = np.full((self._n_internal_units, N), self._ab[1])
+
         for t in range(T):
             current_input = X[:, t, :]
 
-            # Calculate state
-            state_before_tanh = self._internal_weights.dot(previous_state.T) + self._input_weights.dot(current_input.T)
+            if self._IP is True:
+                x = self._internal_weights.dot(previous_state.T) + self._input_weights.dot(current_input.T)
+                state_before_tanh = (np.eye(self._n_internal_units, self._n_internal_units)*self.A).dot(x) + self.B
+            else:
+                x = 1.0
+                state_before_tanh = self._internal_weights.dot(previous_state.T) + self._input_weights.dot(current_input.T)
 
             # Add noise
             state_before_tanh += np.random.rand(self._n_internal_units, N)*self._noise_level
@@ -100,8 +119,7 @@ class Reservoir(object):
             if (t > n_drop - 1):
                 state_matrix[:, t - n_drop, :] = previous_state
 
-        return state_matrix
-
+        return state_matrix, x
 
     def get_states(self, X, n_drop=0, bidir=True):
         N, T, V = X.shape
@@ -109,7 +127,7 @@ class Reservoir(object):
             self._input_weights = (2.0*np.random.binomial(1, 0.5 , [self._n_internal_units, V]) - 1.0)*self._input_scaling
 
         # compute sequence of reservoir states
-        states = self._compute_state_matrix(X, n_drop)
+        states, x = self._compute_state_matrix(X, n_drop)
     
         # reservoir states on time reversed input
         if bidir is True:
@@ -117,4 +135,4 @@ class Reservoir(object):
             states_r = self._compute_state_matrix(X_r, n_drop)
             states = np.concatenate((states, states_r), axis=2)
 
-        return states
+        return states, x
