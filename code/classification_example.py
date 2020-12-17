@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # General imports
 import numpy as np
 import scipy.io
@@ -20,20 +21,24 @@ config['leak'] = 0.6                    # amount of leakage in the reservoir sta
 config['connectivity'] = 0.25           # percentage of nonzero connections in the reservoir
 config['input_scaling'] = 0.1           # scaling of the input weights
 config['noise_level'] = 0.01            # noise in the reservoir state update
-config['n_drop'] = 5                    # transient states to be dropped
-config['bidir'] = True                  # if True, use bidirectional reservoir
+config['n_drop'] = 0                    # transient states to be dropped
+config['bidir'] = False                  # if True, use bidirectional reservoir
 config['circ'] = False                  # use reservoir with circle topology
 
+config['IP'] = True
+config['ab'] = (1.0, 0.0)
+config['ip_parameters'] = (0.0005, 0.0, 0.1) #(eta, mu, sigma)
+
 # Dimensionality reduction hyperparameters
-config['dimred_method'] ='tenpca'       # options: {None (no dimensionality reduction), 'pca', 'tenpca'}
-config['n_dim'] = 75                    # number of resulting dimensions after the dimensionality reduction procedure
+config['dimred_method'] = None       # options: {None (no dimensionality reduction), 'pca', 'tenpca'}
+config['n_dim'] = None                    # number of resulting dimensions after the dimensionality reduction procedure
 
 # Type of MTS representation
-config['mts_rep'] = 'reservoir'         # MTS representation:  {'last', 'mean', 'output', 'reservoir'}
+config['mts_rep'] = 'last'         # MTS representation:  {'last', 'mean', 'output', 'reservoir'}
 config['w_ridge_embedding'] = 10.0      # regularization parameter of the ridge regression
 
 # Type of readout
-config['readout_type'] = 'lin'          # readout used for classification: {'lin', 'mlp', 'svm'}
+config['readout_type'] = 'identity'          # readout used for classification: {'lin', 'mlp', 'svm'} add identity
 
 # Linear readout hyperparameters
 config['w_ridge'] = 5.0                 # regularization of the ridge regression readout
@@ -51,22 +56,26 @@ config['nonlinearity'] = 'relu'         # type of activation function {'relu', '
 print(config)
 
 # ============ Load dataset ============
-data = scipy.io.loadmat('../dataset/'+config['dataset_name']+'.mat')
-X = data['X']  # shape is [N,T,V]
-if len(X.shape) < 3:
-    X = np.atleast_3d(X)
-Y = data['Y']  # shape is [N,1]
-Xte = data['Xte']
-if len(Xte.shape) < 3:
-    Xte = np.atleast_3d(Xte)
-Yte = data['Yte']
+#data = scipy.io.loadmat('../dataset/'+config['dataset_name']+'.mat')
+dataX = np.loadtxt('danni/'+'XtrD32_MackeyGlass_t17.txt').T
+dataY = np.loadtxt('danni/'+'YtrD32_MackeyGlass_t17.txt').T
+X = np.zeros((len(dataX[:,0]), 1, len(dataX[0,:])))
+X[:,0,:] = dataX
+Y = dataY
+#print("X shape input: ", X.shape)
+#print(Y.shape)
+dataXte = np.loadtxt('danni/'+'XtsD32_MackeyGlass_t17.txt').T
+dataYte = np.loadtxt('danni/'+'YtsD32_MackeyGlass_t17.txt').T
+Xte = np.zeros((len(dataXte[:,0]), 1, len(dataXte[0,:])))
+Xte[:,0,:] = dataXte
+Yte = dataYte
 
 print('Loaded '+config['dataset_name']+' - Tr: '+ str(X.shape)+', Te: '+str(Xte.shape))
 
 # One-hot encoding for labels
-onehot_encoder = OneHotEncoder(sparse=False)
-Y = onehot_encoder.fit_transform(Y)
-Yte = onehot_encoder.transform(Yte)
+#onehot_encoder = OneHotEncoder(sparse=False)
+#Y = onehot_encoder.fit_transform(Y)
+#Yte = onehot_encoder.transform(Yte)
 
 # ============ Initialize, train and evaluate the RC model ============
 classifier =  RC_model(
@@ -80,18 +89,21 @@ classifier =  RC_model(
                         circle=config['circ'],
                         n_drop=config['n_drop'],
                         bidir=config['bidir'],
-                        dimred_method=config['dimred_method'], 
-                        n_dim=config['n_dim'],
+                        IP=config['IP'],
+                        ab=config['ab'],
+                        ip_parameters=config['ip_parameters'],
+                        #dimred_method=config['dimred_method'],
+                        #n_dim=config['n_dim'],
                         mts_rep=config['mts_rep'],
                         w_ridge_embedding=config['w_ridge_embedding'],
                         readout_type=config['readout_type'],            
                         w_ridge=config['w_ridge'],              
-                        mlp_layout=config['mlp_layout'],
-                        num_epochs=config['num_epochs'],
-                        w_l2=config['w_l2'],
-                        nonlinearity=config['nonlinearity'], 
-                        svm_gamma=config['svm_gamma'],
-                        svm_C=config['svm_C']
+                        #mlp_layout=config['mlp_layout'],
+                        #num_epochs=config['num_epochs'],
+                        #w_l2=config['w_l2'],
+                        #nonlinearity=config['nonlinearity'],
+                        #svm_gamma=config['svm_gamma'],
+                        #svm_C=config['svm_C']
                         )
 
 tr_time = classifier.train(X,Y)
