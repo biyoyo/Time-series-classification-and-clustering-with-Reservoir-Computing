@@ -271,6 +271,9 @@ class RC_model(object):
 
         (eta, mu, sigma) = self.ip_parameters
 
+        data_fileA = open("a_data.txt", "w")
+        data_fileB = open("b_data.txt", "w")
+
         for _ in range(iterations):
             for i in range(N):
                 y, x = self._reservoir.get_states(X[np.newaxis, i, :, :], n_drop=self.n_drop, bidir=self.bidir)
@@ -280,8 +283,11 @@ class RC_model(object):
                 self._reservoir.A += deltaA.T
                 self._reservoir.B += deltaB[:, np.newaxis]
 
-            write_data_to_file(self._reservoir.A, "a_data.txt")
-            write_data_to_file(self._reservoir.B, "b_data.txt")
+            write_data_to_file(self._reservoir.A, data_fileA)
+            write_data_to_file(self._reservoir.B, data_fileB)
+
+        data_fileA.close()
+        data_fileB.close()
 
         tot_time = (time.time()-time_start)
         print("Ip tuning finished in ", round(tot_time, 3), " seconds.")
