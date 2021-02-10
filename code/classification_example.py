@@ -60,14 +60,11 @@ config['nonlinearity'] = 'relu'         # type of activation function {'relu', '
 print(config)
 
 # ============ Load dataset ============
-#data = scipy.io.loadmat('../dataset/'+config['dataset_name']+'.mat')
 dataX = np.loadtxt('danni/'+'XtrD32_MackeyGlass_t17.txt').T
 dataY = np.loadtxt('danni/'+'YtrD32_MackeyGlass_t17.txt').T
 X = np.zeros((len(dataX[:,0]), 1, len(dataX[0,:])))
 X[:,0,:] = dataX
 Y = dataY
-#print("X shape input: ", X.shape)
-#print(Y.shape)
 dataXte = np.loadtxt('danni/'+'XtsD32_MackeyGlass_t17.txt').T
 dataYte = np.loadtxt('danni/'+'YtsD32_MackeyGlass_t17.txt').T
 Xte = np.zeros((len(dataXte[:,0]), 1, len(dataXte[0,:])))
@@ -75,11 +72,6 @@ Xte[:,0,:] = dataXte
 Yte = dataYte
 
 print('Loaded '+config['dataset_name']+' - Tr: '+ str(X.shape)+', Te: '+str(Xte.shape))
-
-# One-hot encoding for labels
-#onehot_encoder = OneHotEncoder(sparse=False)
-#Y = onehot_encoder.fit_transform(Y)
-#Yte = onehot_encoder.transform(Yte)
 
 # ============ Initialize, train and evaluate the RC model ============
 classifier =  RC_model(
@@ -96,18 +88,10 @@ classifier =  RC_model(
                         IP=config['IP'],
                         ab=config['ab'],
                         ip_parameters=config['ip_parameters'],
-                        #dimred_method=config['dimred_method'],
-                        #n_dim=config['n_dim'],
                         mts_rep=config['mts_rep'],
                         w_ridge_embedding=config['w_ridge_embedding'],
                         readout_type=config['readout_type'],            
                         w_ridge=config['w_ridge'],              
-                        #mlp_layout=config['mlp_layout'],
-                        #num_epochs=config['num_epochs'],
-                        #w_l2=config['w_l2'],
-                        #nonlinearity=config['nonlinearity'],
-                        #svm_gamma=config['svm_gamma'],
-                        #svm_C=config['svm_C']
                         )
 
 classifier.trainIP(X, 2)
