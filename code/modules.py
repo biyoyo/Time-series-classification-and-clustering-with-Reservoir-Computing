@@ -16,6 +16,7 @@ from tensorPCA import tensorPCA
 
 #my imports
 from visualize import write_data_to_file, plot_AB
+import pickle
 
 
 def compute_test_scores(pred_class, Yte):
@@ -254,6 +255,10 @@ class RC_model(object):
         tot_time = (time.time()-time_start)/60
         return tot_time
 
+    def save_trained_model(self, model_file_name):
+       with open(model_file_name, 'wb') as file:
+           pickle.dump(self, file)
+    
     def trainIP(self, X, iterations):
         time_start = time.time()
 
