@@ -2,11 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def write_data_to_file(input, file_name):
-    data = open(file_name, "a")
+def write_data_to_file(input, file):
     for num in input:
-        np.savetxt(data, num)
-    data.close()
+        np.savetxt(file, num)
 
 
 def plot_AB(iterations, internal_units):

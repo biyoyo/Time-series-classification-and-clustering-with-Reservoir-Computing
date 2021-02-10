@@ -23,9 +23,9 @@ def compute_test_scores(pred_class, Yte):
     """
     Wrapper to compute classification accuracy and F1 score
     """
-    
+
     true_class = np.argmax(Yte, axis=1)
-    
+
     accuracy = accuracy_score(true_class, pred_class)
     if Yte.shape[1] > 2:
         f1 = f1_score(true_class, pred_class, average='weighted')
@@ -34,9 +34,9 @@ def compute_test_scores(pred_class, Yte):
 
     return accuracy, f1
 
-            
+
 class RC_model(object):
-    
+
     def __init__(self,
                  # reservoir
                  reservoir=None,
@@ -138,32 +138,33 @@ class RC_model(object):
                                         ab=ab)
         else:
             self._reservoir = reservoir
-                
+
         # Initialize dimensionality reduction method
         if dimred_method is not None:
             if dimred_method.lower() == 'pca':
-                self._dim_red = PCA(n_components=n_dim)            
+                self._dim_red = PCA(n_components=n_dim)
             elif dimred_method.lower() == 'tenpca':
                 self._dim_red = tensorPCA(n_components=n_dim)
             else:
                 raise RuntimeError('Invalid dimred method ID')
-                
+
         # Initialize ridge regression model
-        if mts_rep=='output' or mts_rep=='reservoir':
-            self._ridge_embedding = Ridge(alpha=w_ridge_embedding, fit_intercept=True)
-                        
-        # Initialize readout type            
+        if mts_rep == 'output' or mts_rep == 'reservoir':
+            self._ridge_embedding = Ridge(
+                alpha=w_ridge_embedding, fit_intercept=True)
+
+        # Initialize readout type
         if self.readout_type is not None:
-            
-            if self.readout_type == 'lin': # Ridge regression
-                self.readout = Ridge(alpha=w_ridge)        
-            elif self.readout_type == 'svm': # SVM readout
-                self.readout = SVC(C=svm_C, kernel='precomputed')          
-            elif readout_type == 'mlp': # MLP (deep readout)  
+
+            if self.readout_type == 'lin':  # Ridge regression
+                self.readout = Ridge(alpha=w_ridge)
+            elif self.readout_type == 'svm':  # SVM readout
+                self.readout = SVC(C=svm_C, kernel='precomputed')
+            elif readout_type == 'mlp':  # MLP (deep readout)
                 # pass
                 self.readout = MLPClassifier(
-                    hidden_layer_sizes=mlp_layout, 
-                    activation=nonlinearity, 
+                    hidden_layer_sizes=mlp_layout,
+                    activation=nonlinearity,
                     alpha=w_l2,
                     batch_size=32,
                     learning_rate='adaptive',  # 'constant' or 'adaptive'
@@ -175,78 +176,82 @@ class RC_model(object):
             elif self.readout_type == 'identity':
                 self.readout = Ridge(alpha=w_ridge)
             else:
-                raise RuntimeError('Invalid readout type')  
-        
-        
+                raise RuntimeError('Invalid readout type')
+
     def train(self, X, Y=None):
-        
+
         time_start = time.time()
-        
-        # ============ Compute reservoir states ============ 
-        res_states = self._reservoir.get_states(X, n_drop=self.n_drop, bidir=self.bidir)
-        
-        # ============ Dimensionality reduction of the reservoir states ============  
-        if self.dimred_method.lower() == 'pca':
+
+        # ============ Compute reservoir states ============
+        res_states, _ = self._reservoir.get_states(
+            X, n_drop=self.n_drop, bidir=self.bidir)
+
+        # ============ Dimensionality reduction of the reservoir states ============
+        if self.dimred_method == 'pca':
             # matricize
             N_samples = res_states.shape[0]
-            res_states = res_states.reshape(-1, res_states.shape[2])                   
+            res_states = res_states.reshape(-1, res_states.shape[2])
             # ..transform..
-            red_states = self._dim_red.fit_transform(res_states)          
+            red_states = self._dim_red.fit_transform(res_states)
             # ..and put back in tensor form
-            red_states = red_states.reshape(N_samples,-1,red_states.shape[1])          
-        elif self.dimred_method.lower() == 'tenpca':
-            red_states = self._dim_red.fit_transform(res_states)       
-        else: # Skip dimensionality reduction
+            red_states = red_states.reshape(N_samples, -1, red_states.shape[1])
+        elif self.dimred_method == 'tenpca':
+            red_states = self._dim_red.fit_transform(res_states)
+        else:  # Skip dimensionality reduction
             red_states = res_states
 
         # ============ Generate representation of the MTS ============
         coeff_tr = []
-        biases_tr = []   
-        
+        biases_tr = []
+
         # Output model space representation
-        if self.mts_rep=='output':
+        if self.mts_rep == 'output':
             if self.bidir:
-                X = np.concatenate((X,X[:, ::-1, :]),axis=2)                
-                
+                X = np.concatenate((X, X[:, ::-1, :]), axis=2)
+
             for i in range(X.shape[0]):
-                self._ridge_embedding.fit(red_states[i, 0:-1, :], X[i, self.n_drop+1:, :])
+                self._ridge_embedding.fit(
+                    red_states[i, 0:-1, :], X[i, self.n_drop+1:, :])
                 coeff_tr.append(self._ridge_embedding.coef_.ravel())
                 biases_tr.append(self._ridge_embedding.intercept_.ravel())
-            input_repr = np.concatenate((np.vstack(coeff_tr), np.vstack(biases_tr)), axis=1)
-            
+            input_repr = np.concatenate(
+                (np.vstack(coeff_tr), np.vstack(biases_tr)), axis=1)
+
         # Reservoir model space representation
-        elif self.mts_rep=='reservoir':
+        elif self.mts_rep == 'reservoir':
             for i in range(X.shape[0]):
-                self._ridge_embedding.fit(red_states[i, 0:-1, :], red_states[i, 1:, :])
+                self._ridge_embedding.fit(
+                    red_states[i, 0:-1, :], red_states[i, 1:, :])
                 coeff_tr.append(self._ridge_embedding.coef_.ravel())
                 biases_tr.append(self._ridge_embedding.intercept_.ravel())
-            input_repr = np.concatenate((np.vstack(coeff_tr), np.vstack(biases_tr)), axis=1)
-        
-        # Last state representation        
-        elif self.mts_rep=='last':
+            input_repr = np.concatenate(
+                (np.vstack(coeff_tr), np.vstack(biases_tr)), axis=1)
+
+        # Last state representation
+        elif self.mts_rep == 'last':
             input_repr = red_states[:, -1, :]
-            
-        # Mean state representation        
-        elif self.mts_rep=='mean':
+
+        # Mean state representation
+        elif self.mts_rep == 'mean':
             input_repr = np.mean(red_states, axis=1)
-            
+
         else:
-            raise RuntimeError('Invalid representation ID')            
-            
+            raise RuntimeError('Invalid representation ID')
+
         # ============ Apply readout ============
-        if self.readout_type == None: # Just store the input representations
+        if self.readout_type == None:  # Just store the input representations
             self.input_repr = input_repr
-            
+
         elif self.readout_type == 'lin': # Ridge regression
-            self.readout.fit(input_repr, Y)          
-            
-        elif self.readout_type == 'svm': # SVM readout
-            Ktr = squareform(pdist(input_repr, metric='sqeuclidean')) 
+            self.readout.fit(input_repr, Y)
+
+        elif self.readout_type == 'svm':  # SVM readout
+            Ktr = squareform(pdist(input_repr, metric='sqeuclidean'))
             Ktr = np.exp(-self.svm_gamma*Ktr)
-            self.readout.fit(Ktr, np.argmax(Y,axis=1))
-            self.input_repr_tr = input_repr # store them to build test kernel
-            
-        elif self.readout_type == 'mlp': # MLP (deep readout)
+            self.readout.fit(Ktr, np.argmax(Y, axis=1))
+            self.input_repr_tr = input_repr  # store them to build test kernel
+
+        elif self.readout_type == 'mlp':  # MLP (deep readout)
             self.readout.fit(input_repr, Y)
 
         elif self.readout_type == 'identity': #new readout
@@ -284,67 +289,74 @@ class RC_model(object):
     def test(self, Xte, Yte):
 
         # ============ Compute reservoir states ============
-        res_states_te = self._reservoir.get_states(Xte, n_drop=self.n_drop, bidir=self.bidir) 
-        
-        # ============ Dimensionality reduction of the reservoir states ============ 
-        if self.dimred_method.lower() == 'pca':
+        res_states_te, _ = self._reservoir.get_states(
+            Xte, n_drop=self.n_drop, bidir=self.bidir)
+
+        # ============ Dimensionality reduction of the reservoir states ============
+        if self.dimred_method == 'pca':
             # matricize
             N_samples_te = res_states_te.shape[0]
-            res_states_te = res_states_te.reshape(-1, res_states_te.shape[2])                    
+            res_states_te = res_states_te.reshape(-1, res_states_te.shape[2])
             # ..transform..
-            red_states_te = self._dim_red.transform(res_states_te)            
+            red_states_te = self._dim_red.transform(res_states_te)
             # ..and put back in tensor form
-            red_states_te = red_states_te.reshape(N_samples_te,-1,red_states_te.shape[1])            
-        elif self.dimred_method.lower() == 'tenpca':
-            red_states_te = self._dim_red.transform(res_states_te)        
-        else: # Skip dimensionality reduction
-            red_states_te = res_states_te             
-        
+            red_states_te = red_states_te.reshape(
+                N_samples_te, -1, red_states_te.shape[1])
+        elif self.dimred_method == 'tenpca':
+            red_states_te = self._dim_red.transform(res_states_te)
+        else:  # Skip dimensionality reduction
+            red_states_te = res_states_te
+
         # ============ Generate representation of the MTS ============
         coeff_te = []
-        biases_te = []   
-        
+        biases_te = []
+
         # Output model space representation
-        if self.mts_rep=='output':
+        if self.mts_rep == 'output':
             if self.bidir:
-                Xte = np.concatenate((Xte,Xte[:, ::-1, :]),axis=2)  
-                    
+                Xte = np.concatenate((Xte, Xte[:, ::-1, :]), axis=2)
+
             for i in range(Xte.shape[0]):
-                self._ridge_embedding.fit(red_states_te[i, 0:-1, :], Xte[i, self.n_drop+1:, :])
+                self._ridge_embedding.fit(
+                    red_states_te[i, 0:-1, :], Xte[i, self.n_drop+1:, :])
                 coeff_te.append(self._ridge_embedding.coef_.ravel())
                 biases_te.append(self._ridge_embedding.intercept_.ravel())
-            input_repr_te = np.concatenate((np.vstack(coeff_te), np.vstack(biases_te)), axis=1)
-        
+            input_repr_te = np.concatenate(
+                (np.vstack(coeff_te), np.vstack(biases_te)), axis=1)
+
         # Reservoir model space representation
-        elif self.mts_rep=='reservoir':    
+        elif self.mts_rep == 'reservoir':
             for i in range(Xte.shape[0]):
-                self._ridge_embedding.fit(red_states_te[i, 0:-1, :], red_states_te[i, 1:, :])
+                self._ridge_embedding.fit(
+                    red_states_te[i, 0:-1, :], red_states_te[i, 1:, :])
                 coeff_te.append(self._ridge_embedding.coef_.ravel())
                 biases_te.append(self._ridge_embedding.intercept_.ravel())
-            input_repr_te = np.concatenate((np.vstack(coeff_te), np.vstack(biases_te)), axis=1)
-    
-        # Last state representation        
-        elif self.mts_rep=='last':
+            input_repr_te = np.concatenate(
+                (np.vstack(coeff_te), np.vstack(biases_te)), axis=1)
+
+        # Last state representation
+        elif self.mts_rep == 'last':
             input_repr_te = red_states_te[:, -1, :]
-            
-        # Mean state representation        
-        elif self.mts_rep=='mean':
+
+        # Mean state representation
+        elif self.mts_rep == 'mean':
             input_repr_te = np.mean(red_states_te, axis=1)
-            
+
         else:
-            raise RuntimeError('Invalid representation ID')   
-            
+            raise RuntimeError('Invalid representation ID')
+
         # ============ Apply readout ============
-        if self.readout_type == 'lin': # Ridge regression        
+        if self.readout_type == 'lin':  # Ridge regression
             logits = self.readout.predict(input_repr_te)
             pred_class = np.argmax(logits, axis=1)
-            
-        elif self.readout_type == 'svm': # SVM readout
-            Kte = cdist(input_repr_te, self.input_repr_tr, metric='sqeuclidean')
+
+        elif self.readout_type == 'svm':  # SVM readout
+            Kte = cdist(input_repr_te, self.input_repr_tr,
+                        metric='sqeuclidean')
             Kte = np.exp(-self.svm_gamma*Kte)
             pred_class = self.readout.predict(Kte)
-            
-        elif self.readout_type == 'mlp': # MLP (deep readout)
+
+        elif self.readout_type == 'mlp':  # MLP (deep readout)
             pred_class = self.readout.predict(input_repr_te)
             pred_class = np.argmax(pred_class, axis=1)
 
@@ -353,4 +365,5 @@ class RC_model(object):
             pred_class = np.argmax(logits, axis=1)
 
         accuracy, f1 = compute_test_scores(pred_class, Yte)
+
         return accuracy, f1
