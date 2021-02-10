@@ -7,6 +7,10 @@ from sklearn.preprocessing import OneHotEncoder
 # Custom imports
 from modules import RC_model
 
+#my imports
+from visualize import plot_AB
+import pickle
+
 # ============ RC model configuration and hyperparameter values ============
 config = {}
 config['dataset_name'] = 'JpVow'
@@ -106,8 +110,18 @@ classifier =  RC_model(
                         #svm_C=config['svm_C']
                         )
 
+classifier.trainIP(X, 2)
+plot_AB(2, config['n_internal_units'])
+
 tr_time = classifier.train(X,Y)
 print('Training time = %.2f seconds'%tr_time)
 
 accuracy, f1 = classifier.test(Xte, Yte)
 print('Accuracy = %.3f, F1 = %.3f'%(accuracy, f1))
+
+classifier.save_trained_model("model.pickle")
+
+"""
+with open("model.pickle", 'rb') as file:
+    classifier = pickle.load(file)
+"""
